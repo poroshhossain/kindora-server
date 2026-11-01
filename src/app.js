@@ -53,5 +53,20 @@ app.post('/events', async (req, res) => {
     }
 })
 
+app.get('/events', async (req, res) => {
+    try {
+        const result = await eventCollaction.find().toArray();
+
+        res.send(result)
+
+    } catch (error) {
+        res.status(500).send({
+            success: false,
+            message: 'failed to load event',
+            error: error.message
+        })
+    }
+})
+
 
 export default app;
