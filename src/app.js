@@ -40,6 +40,57 @@ app.get('/', (req, res) => {
 
 
 // participleCollaction Start
+app.get("/joined-events", async (req, res) => {
+  try {
+    const { userEmail } = req.query;
+
+    if (!userEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "User email is required",
+      });
+    }
+
+    // Step 1: Find joined records
+    const joinedRecords = await participleCollaction
+      .find({
+        userEmail: userEmail.toLowerCase().trim(),
+      })
+      .toArray();
+
+    // Step 2: Get all event IDs
+    const eventIds = joinedRecords.map(
+      (item) => item.eventId
+    );
+
+    // Step 3: Find all related events
+    const events = await eventCollaction
+      .find({
+        _id: { $in: eventIds },
+      })
+      .toArray();
+
+    // Step 4: Sort by event date
+    events.sort(
+      (a, b) =>
+        new Date(a.eventDate).getTime() -
+        new Date(b.eventDate).getTime()
+    );
+    res.status(200).send({
+      success: true,
+      data: events,
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to load joined events",
+    });
+  }
+});
+
 app.post("/events/:id/join", async (req, res) => {
   try {
     const { id } = req.params;
@@ -118,6 +169,8 @@ app.post("/events/:id/join", async (req, res) => {
 
 // participleCollaction End
 
+
+
 app.post("/events", async (req, res) => {
   try {
     const {
@@ -170,6 +223,8 @@ app.post("/events", async (req, res) => {
     });
   }
 });
+
+
 
 app.get('/events', async (req, res) => {
   try {
