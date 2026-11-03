@@ -394,8 +394,6 @@ app.post("/events", async (req, res) => {
   }
 });
 
-
-
 app.get('/events', async (req, res) => {
   try {
     const result = await eventCollaction.find().sort({ createdAt: -1 }).toArray();
@@ -410,6 +408,26 @@ app.get('/events', async (req, res) => {
     })
   }
 })
+
+app.get('/recent-events', async (req, res) => {
+  try {
+    const result = await eventCollaction
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .toArray();
+
+    res.send(result);
+
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: 'Failed to load recent events',
+      error: error.message
+    });
+  }
+});
+
 
 app.get("/events/:id", async (req, res) => {
   try {
