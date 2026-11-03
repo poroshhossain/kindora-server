@@ -1,6 +1,7 @@
 import express from "express"
 import cors from "cors"
 import dotenv from "dotenv"
+import { MongoClient, ObjectId } from 'mongodb';
 
 dotenv.config();
 
@@ -10,27 +11,112 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-import { MongoClient } from 'mongodb';
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
 export async function connectToMongoDB() {
-    try {
-        await client.connect();
-        console.log("You successfully connected to MongoDB!");
-        return client;
-    } catch (err) {
-        console.dir(err);
-    }
+  try {
+    await client.connect();
+    console.log("You successfully connected to MongoDB!");
+    return client;
+  } catch (err) {
+    console.dir(err);
+  }
 }
 
 const connectDb = await connectToMongoDB();
 const db = connectDb.db("kindora-db");
 const eventCollaction = db.collection("user-events");
 
+const participleCollaction = db.collection("join-events");
+await participleCollaction.createIndex(
+  { eventId: 1, userEmail: 1 },
+  { unique: true }
+)
+
 app.get('/', (req, res) => {
-    res.send("Social Development API is running!");
+  res.send("Social Development API is running!");
 })
+
+
+// participleCollaction Start
+app.post("/events/:id/join", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userEmail } = req.body;
+
+    // Validate event ID
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid event ID",
+      });
+    }
+
+    // Validate user email
+    if (!userEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "User email is required",
+      });
+    }
+
+    // Check event exists
+    const event = await eventCollaction.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!event) {
+      return res.status(404).send({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    // Check duplicate join
+    const alreadyJoined = await participleCollaction.findOne({
+      eventId: new ObjectId(id),
+      userEmail: userEmail.toLowerCase().trim(),
+    });
+
+    if (alreadyJoined) {
+      return res.status(409).send({
+        success: false,
+        message: "You have already joined this event.",
+      });
+    }
+
+    // Save joined event
+    const joinData = {
+      eventId: new ObjectId(id),
+      userEmail: userEmail.toLowerCase().trim(),
+      joinedAt: new Date(),
+    };
+
+    const result = await participleCollaction.insertOne(joinData);
+
+    res.status(201).send({
+      success: true,
+      message: "Event joined successfully!",
+      insertedId: result.insertedId,
+    });
+
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).send({
+        success: false,
+        message: "You have already joined this event.",
+      });
+    }
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to join event.",
+    });
+  }
+});
+
+// participleCollaction End
 
 app.post("/events", async (req, res) => {
   try {
@@ -86,20 +172,19 @@ app.post("/events", async (req, res) => {
 });
 
 app.get('/events', async (req, res) => {
-    try {
-        const result = await eventCollaction.find().sort({ createdAt: -1 }).toArray();
+  try {
+    const result = await eventCollaction.find().sort({ createdAt: -1 }).toArray();
 
-        res.send(result)
+    res.send(result)
 
-    } catch (error) {
-        res.status(500).send({
-            success: false,
-            message: 'failed to load event',
-            error: error.message
-        })
-    }
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: 'failed to load event',
+      error: error.message
+    })
+  }
 })
-import { ObjectId } from "mongodb";
 
 app.get("/events/:id", async (req, res) => {
   try {
