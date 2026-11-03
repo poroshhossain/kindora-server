@@ -40,6 +40,8 @@ app.get('/', (req, res) => {
 
 
 // participleCollaction Start
+
+
 app.get("/joined-events", async (req, res) => {
   try {
     const { userEmail } = req.query;
@@ -168,7 +170,153 @@ app.post("/events/:id/join", async (req, res) => {
 });
 
 // participleCollaction End
+app.get("/my-events", async (req, res) => {
+  try {
+    const { userEmail } = req.query;
 
+    if (!userEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "User email is required",
+      });
+    }
+
+    const events = await eventCollaction.find({
+      createdBy: userEmail.toLowerCase().trim(),
+    }).sort({ createdAt: -1 }).toArray();
+
+    res.status(200).send({
+      success: true,
+      data: events,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to load your events",
+    });
+  }
+});
+
+app.delete("/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userEmail } = req.body;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid event ID",
+      });
+    }
+
+    if (!userEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "User email is required",
+      });
+    }
+
+    const result = await eventCollaction.deleteOne({
+      _id: new ObjectId(id),
+      createdBy: userEmail.toLowerCase().trim(),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        success: false,
+        message: "Event not found or you are not authorized",
+      });
+    }
+
+    res.status(200).send({
+      success: true,
+      message: "Event deleted successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to delete event",
+    });
+  }
+});
+
+app.patch("/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userEmail } = req.body;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid event ID",
+      });
+    }
+
+    if (!userEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "User email is required",
+      });
+    }
+
+    // Only allow these fields to be updated
+    const { data } =
+      req.body;
+
+    const updateData = {
+      ...data
+    };
+
+    // Remove undefined fields
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).send({
+        success: false,
+        message: "No update data provided",
+      });
+    }
+
+    updateData.updatedAt = new Date();
+
+    const result = await eventCollaction.updateOne(
+      {
+        _id: new ObjectId(id),
+        createdBy: userEmail.toLowerCase().trim(),
+      },
+      {
+        $set: updateData,
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({
+        success: false,
+        message: "Event not found or you are not authorized",
+      });
+    }
+
+    res.status(200).send({
+      success: true,
+      message: "Event updated successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to update event",
+    });
+  }
+});
 
 
 app.post("/events", async (req, res) => {
@@ -180,9 +328,29 @@ app.post("/events", async (req, res) => {
       thumbnail,
       location,
       eventDate,
+      createdBy,
     } = req.body;
 
-    // 1. Duplicate check
+    // 1. Validate required fields
+    if (
+      !title?.trim() ||
+      !description?.trim() ||
+      !eventType?.trim() ||
+      !thumbnail?.trim() ||
+      !location?.trim() ||
+      !eventDate?.trim() ||
+      !createdBy?.trim()
+    ) {
+      return res.status(400).send({
+        success: false,
+        message: "All fields are required.",
+      });
+    }
+
+    // 2. Normalize email
+    const email = createdBy.toLowerCase().trim();
+
+    // 3. Duplicate check
     const existingEvent = await eventCollaction.findOne({
       title: title.trim(),
       eventType,
@@ -190,7 +358,6 @@ app.post("/events", async (req, res) => {
       eventDate,
     });
 
-    // 2. If duplicate exists
     if (existingEvent) {
       return res.status(409).send({
         success: false,
@@ -198,14 +365,15 @@ app.post("/events", async (req, res) => {
       });
     }
 
-    // 3. Create new event
+    // 4. Create event
     const eventData = {
       title: title.trim(),
-      description,
+      description: description.trim(),
       eventType,
-      thumbnail,
+      thumbnail: thumbnail.trim(),
       location: location.trim(),
       eventDate,
+      createdBy: email,
       createdAt: new Date(),
     };
 
@@ -217,6 +385,8 @@ app.post("/events", async (req, res) => {
       insertedId: result.insertedId,
     });
   } catch (error) {
+    console.error(error);
+
     res.status(500).send({
       success: false,
       message: "Failed to create event.",
