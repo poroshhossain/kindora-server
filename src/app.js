@@ -1,3 +1,4 @@
+import { jwtVerify, createRemoteJWKSet } from 'jose'
 import express from "express"
 import cors from "cors"
 import dotenv from "dotenv"
@@ -38,6 +39,30 @@ app.get('/', (req, res) => {
   res.send("Social Development API is running!");
 })
 
+
+// varify token
+const varifyToken = async (req, res, next) => {
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ msg: 'unauhorized' })
+  }
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ msg: 'unauhorized' })
+  }
+  const JWTS = createRemoteJWKSet(new URL(process.env.CLIENT_URL))
+
+  try {
+    const { payload } = await jwtVerify(token, JWTS);
+    req.user = payload;
+    next()
+
+  } catch (error) {
+    return res.status(500).send({ msg: `unauthrized server error: ${error}` })
+  }
+
+}
 
 // participleCollaction Start
 
@@ -93,7 +118,48 @@ app.get("/joined-events", async (req, res) => {
   }
 });
 
-app.post("/events/:id/join", async (req, res) => {
+app.delete("/events/:id/join", varifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user.email;
+
+    // Validate event ID
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid event ID",
+      });
+    }
+
+    // Delete joined record
+    const result = await participleCollaction.deleteOne({
+      eventId: new ObjectId(id),
+      userEmail: userEmail.toLowerCase().trim(),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        success: false,
+        message: "You have not joined this event",
+      });
+    }
+
+    res.status(200).send({
+      success: true,
+      message: "Event left successfully!",
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to leave event",
+    });
+  }
+});
+
+app.post("/events/:id/join", varifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { userEmail } = req.body;
@@ -199,7 +265,7 @@ app.get("/my-events", async (req, res) => {
   }
 });
 
-app.delete("/events/:id", async (req, res) => {
+app.delete("/events/:id",varifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { userEmail } = req.body;
@@ -244,7 +310,7 @@ app.delete("/events/:id", async (req, res) => {
   }
 });
 
-app.patch("/events/:id", async (req, res) => {
+app.patch("/events/:id",varifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { userEmail } = req.body;
@@ -319,7 +385,7 @@ app.patch("/events/:id", async (req, res) => {
 });
 
 
-app.post("/events", async (req, res) => {
+app.post("/events",varifyToken, async (req, res) => {
   try {
     const {
       title,
